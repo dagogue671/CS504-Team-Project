@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import "./SignInForm.css";
 // Client-side sign-in form. Move DOM interactions into React hooks/handlers.
 export default function SignInForm() {
+  const router = useRouter();
   const formRef = useRef(null);
   const passwordRef = useRef(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -55,6 +57,9 @@ export default function SignInForm() {
       name="form"
       onSubmit={handleSubmit}
     >
+      <button type="button" className="back-button" onClick={() => router.back()}>
+        Back
+      </button>
       <h1>Sign in</h1>
 
       <section>

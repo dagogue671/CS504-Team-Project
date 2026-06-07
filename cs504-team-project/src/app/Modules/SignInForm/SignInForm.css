@@ -26,6 +26,17 @@ button {
   padding: 10px;
 }
 
+button.back-button {
+  background-color: transparent;
+  border: none;
+  color: #666;
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 20px;
+  padding: 0;
+  text-decoration: underline;
+}
+
 button:hover {
   background-color: #ccc;
   color: black;

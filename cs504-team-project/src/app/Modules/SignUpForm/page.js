@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import "./SignUpForm.css";
 
 export default function SignUpForm() {
+  const router = useRouter();
   const formRef = useRef(null);
   const passwordRef = useRef(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -56,6 +58,9 @@ export default function SignUpForm() {
 
   return (
     <main>
+      <button type="button" className="back-button" onClick={() => router.back()}>
+        Back
+      </button>
       <form ref={formRef} method="post" onSubmit={handleFormSubmission}>
         <h1>Sign up</h1>
 
