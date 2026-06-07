@@ -1,10 +1,5 @@
-// import Image from "next/image";
-// import styles from "./page.module.css";
-import SignInForm from "./Modules/SignInForm";
-import SignUpForm from "./Modules/SignUpForm";
+import HomePage from "./Modules/HomePage";
 
 export default function Home() {
-  return (
-    <SignUpForm />
-  );
+  return <HomePage />;
 }

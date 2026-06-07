@@ -13,6 +13,20 @@ body {
   margin: 20px 15px 0 15px;
 }
 
+button.back-button {
+  background-color: transparent;
+  border: none;
+  color: #444;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 18px; /* fallback */
+  font-size: var(--small-mobile-font-size);
+  font-weight: 500;
+  margin-bottom: 20px;
+  padding: 0;
+  text-decoration: underline;
+}
+
 button#sign-up {
   background-color: black;
   border: 1px solid #ccc;
