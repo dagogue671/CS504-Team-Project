@@ -36,27 +36,46 @@ export default function SignInForm() {
     setShowPassword((s) => !s);
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
+    e.preventDefault();
     const form = formRef.current;
     if (!form) return;
     if (!form.checkValidity()) {
-      // Let browser show validation UI
-      e.preventDefault();
       return;
     }
-    // allow form to submit; but disable button to prevent double submit
+
     setSigninDisabled(true);
+    const formData = new FormData(form);
+    const payload = {
+      email: String(formData.get("email") || ""),
+      password: String(formData.get("current-password") || ""),
+    };
+
+    try {
+      const response = await fetch("/api/signin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Unable to sign in.");
+      }
+
+      alert(`Welcome back, ${data.name}!`);
+      router.push("/");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to sign in.");
+      setSigninDisabled(false);
+    }
   }
 
   return (
-    <form
-      ref={formRef}
-      action="https://form-server.glitch.me/post"
-      method="post"
-      id="form"
-      name="form"
-      onSubmit={handleSubmit}
-    >
+    <form ref={formRef} method="post" id="form" name="form" onSubmit={handleSubmit}>
       <button type="button" className="back-button" onClick={() => router.back()}>
         Back
       </button>

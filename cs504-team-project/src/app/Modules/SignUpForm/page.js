@@ -40,7 +40,7 @@ export default function SignUpForm() {
     setShowPassword((value) => !value);
   }
 
-  function handleFormSubmission(event) {
+  async function handleFormSubmission(event) {
     event.preventDefault();
     validatePassword();
 
@@ -53,7 +53,35 @@ export default function SignUpForm() {
     }
 
     setSignupDisabled(true);
-    alert("Signed up!");
+
+    const formData = new FormData(form);
+    const payload = {
+      name: formData.get("name"),
+      email: formData.get("email"),
+      password: formData.get("password"),
+    };
+
+    try {
+      const response = await fetch("/api/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json?.error || "Failed to save signup data.");
+      }
+
+      alert("Signed up!");
+      router.push("/");
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "Unable to save signup data.");
+      setSignupDisabled(false);
+    }
   }
 
   return (
