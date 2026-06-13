@@ -4,83 +4,93 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   multiFactor,
   PhoneAuthProvider,
   PhoneMultiFactorGenerator,
   RecaptchaVerifier,
-  // REMOVE 'getAuth' from this import list
-  // signInWithEmailAndPassword,
-  // getMultiFactorResolver,
 } from "firebase/auth";
-import "./SignUpForm.css"; // Assuming your CSS is set up
-// Import the initialized auth instance
-import { auth } from "../../firebase"; // <-- This 'auth' is the one you should use everywhere
+import "./SignUpForm.css";
+import { auth } from "../../firebase";
 
 export default function SignUpForm() {
   const router = useRouter();
+
   const formRef = useRef(null);
   const passwordRef = useRef(null);
+  const recaptchaVerifierRef = useRef(null);
+
   const [showPassword, setShowPassword] = useState(false);
   const [signupDisabled, setSignupDisabled] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
 
-  // MFA specific states
   const [showMfaEnrollment, setShowMfaEnrollment] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationId, setVerificationId] = useState("");
+
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isEnrollingMfa, setIsEnrollingMfa] = useState(false);
-  const recaptchaVerifierRef = useRef(null); // Ref to store the RecaptchaVerifier instance
 
   useEffect(() => {
-    // Initialize RecaptchaVerifier
-    // THIS PART IS CORRECT - it uses the imported 'auth'
-    if (!recaptchaVerifierRef.current) {
-      recaptchaVerifierRef.current = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible', // Invisible reCAPTCHA
-        'callback': (response) => {
-          // reCAPTCHA solved, allow user to proceed
-          console.log("reCAPTCHA solved:", response);
-        },
-        'expired-callback': () => {
-          // reCAPTCHA expired, reset it
-          console.log("reCAPTCHA expired.");
-          if (recaptchaVerifierRef.current && recaptchaVerifierRef.current.clear) {
-            recaptchaVerifierRef.current.clear();
-          }
-        }
-      });
-      recaptchaVerifierRef.current.render().then((widgetId) => {
-        console.log("reCAPTCHA widget rendered with ID:", widgetId);
-      });
+    const input = passwordRef.current;
+
+    const clearValidity = () => {
+      if (input) input.setCustomValidity("");
+    };
+
+    if (input) {
+      input.addEventListener("input", clearValidity);
     }
 
-    const input = passwordRef.current;
-    if (!input) return;
-
-    const clearValidity = () => input.setCustomValidity("");
-    input.addEventListener("input", clearValidity);
     return () => {
-      input.removeEventListener("input", clearValidity);
-      // Clean up reCAPTCHA on unmount
-      if (recaptchaVerifierRef.current && recaptchaVerifierRef.current.clear) {
+      if (input) {
+        input.removeEventListener("input", clearValidity);
+      }
+
+      if (recaptchaVerifierRef.current) {
         recaptchaVerifierRef.current.clear();
+        recaptchaVerifierRef.current = null;
       }
     };
   }, []);
+
+  async function getRecaptchaVerifier() {
+    if (!recaptchaVerifierRef.current) {
+      recaptchaVerifierRef.current = new RecaptchaVerifier(
+        auth,
+        "recaptcha-container",
+        {
+          size: "invisible",
+          callback: () => {
+            console.log("reCAPTCHA solved.");
+          },
+          "expired-callback": () => {
+            console.log("reCAPTCHA expired.");
+          },
+        }
+      );
+
+      const widgetId = await recaptchaVerifierRef.current.render();
+      console.log("reCAPTCHA widget rendered with ID:", widgetId);
+    }
+
+    return recaptchaVerifierRef.current;
+  }
 
   function validatePassword() {
     const input = passwordRef.current;
     if (!input) return;
 
     let message = "";
+
     if (!/.{8,}/.test(input.value)) {
-      message = "At least eight characters.";
+      message = "Password must have at least eight characters.";
     } else if (!/.*[A-Z].*/.test(input.value)) {
-      message = "At least one uppercase letter.";
+      message = "Password must have at least one uppercase letter.";
     } else if (!/.*[a-z].*/.test(input.value)) {
-      message = "At least one lowercase letter.";
+      message = "Password must have at least one lowercase letter.";
     }
 
     input.setCustomValidity(message);
@@ -92,38 +102,96 @@ export default function SignUpForm() {
 
   async function handleFormSubmission(event) {
     event.preventDefault();
+
     validatePassword();
 
     const form = formRef.current;
     if (!form) return;
 
     form.reportValidity();
+
     if (!form.checkValidity()) {
       return;
     }
 
     setSignupDisabled(true);
     setErrorMessage("");
+    setInfoMessage("");
 
     const formData = new FormData(form);
     const email = formData.get("email");
     const password = formData.get("password");
-    const name = formData.get("name");
 
     try {
-      // REMOVE THIS LINE: const auth = getAuth();
       const userCredential = await createUserWithEmailAndPassword(
-        auth, // Use the imported 'auth' instance
+        auth,
         email,
         password
       );
 
-      alert("Signed up successfully! Now, please enroll in Multi-Factor Authentication.");
-      setShowMfaEnrollment(true);
+      await sendEmailVerification(userCredential.user);
+
+      setInfoMessage(
+        "Account created. A verification email has been sent. Please verify your email before setting up MFA."
+      );
+
+      alert(
+        "Account created. Please check your email and verify your account before setting up MFA."
+      );
+
+      setSignupDisabled(false);
     } catch (error) {
       console.error("Firebase sign up error:", error);
-      setErrorMessage(error.message || "Unable to save signup data.");
+      setErrorMessage(error.message || "Unable to create account.");
       setSignupDisabled(false);
+    }
+  }
+
+  async function checkEmailVerification() {
+    setErrorMessage("");
+    setInfoMessage("");
+
+    try {
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("No user is currently signed in.");
+      }
+
+      await currentUser.reload();
+
+      if (!currentUser.emailVerified) {
+        setErrorMessage(
+          "Your email is not verified yet. Please check your inbox or spam folder."
+        );
+        return;
+      }
+
+      setInfoMessage("Email verified. You can now enroll in MFA.");
+      setShowMfaEnrollment(true);
+    } catch (error) {
+      console.error("Email verification check error:", error);
+      setErrorMessage(error.message || "Unable to check email verification.");
+    }
+  }
+
+  async function resendVerificationEmail() {
+    setErrorMessage("");
+    setInfoMessage("");
+
+    try {
+      const currentUser = auth.currentUser;
+
+      if (!currentUser) {
+        throw new Error("No user is currently signed in.");
+      }
+
+      await sendEmailVerification(currentUser);
+
+      setInfoMessage("Verification email resent. Please check your inbox.");
+    } catch (error) {
+      console.error("Resend verification email error:", error);
+      setErrorMessage(error.message || "Unable to resend verification email.");
     }
   }
 
@@ -132,37 +200,45 @@ export default function SignUpForm() {
       setErrorMessage("Please enter a phone number.");
       return;
     }
+
     setIsSendingCode(true);
     setErrorMessage("");
+    setInfoMessage("");
 
     try {
-      // REMOVE THIS LINE: const auth = getAuth();
-      const currentUser = auth.currentUser; // Use the imported 'auth' instance
+      const currentUser = auth.currentUser;
 
       if (!currentUser) {
         throw new Error("No user is currently signed in for MFA enrollment.");
       }
 
+      await currentUser.reload();
+
+      if (!currentUser.emailVerified) {
+        throw new Error("Please verify your email before enrolling MFA.");
+      }
+
+      const appVerifier = await getRecaptchaVerifier();
+
       const multiFactorSession = await multiFactor(currentUser).getSession();
 
       const phoneInfoOptions = {
-        phoneNumber: phoneNumber,
+        phoneNumber,
         session: multiFactorSession,
       };
 
-      const phoneAuthProvider = new PhoneAuthProvider(auth); // Use the imported 'auth' instance
+      const phoneAuthProvider = new PhoneAuthProvider(auth);
+
       const id = await phoneAuthProvider.verifyPhoneNumber(
         phoneInfoOptions,
-        recaptchaVerifierRef.current
+        appVerifier
       );
+
       setVerificationId(id);
-      alert("Verification code sent to your phone!");
+      setInfoMessage("Verification code sent to your phone.");
     } catch (error) {
       console.error("Error sending MFA verification code:", error);
       setErrorMessage(error.message || "Failed to send verification code.");
-      if (recaptchaVerifierRef.current && recaptchaVerifierRef.current.clear) {
-        recaptchaVerifierRef.current.clear();
-      }
     } finally {
       setIsSendingCode(false);
     }
@@ -173,15 +249,20 @@ export default function SignUpForm() {
       setErrorMessage("Please enter the verification code.");
       return;
     }
+
     setIsEnrollingMfa(true);
     setErrorMessage("");
+    setInfoMessage("");
 
     try {
-      // REMOVE THIS LINE: const auth = getAuth();
-      const currentUser = auth.currentUser; // Use the imported 'auth' instance
+      const currentUser = auth.currentUser;
 
       if (!currentUser) {
         throw new Error("No user is currently signed in for MFA enrollment.");
+      }
+
+      if (!verificationId) {
+        throw new Error("Missing verification ID. Please resend the code.");
       }
 
       const phoneAuthCredential = PhoneAuthProvider.credential(
@@ -189,11 +270,13 @@ export default function SignUpForm() {
         verificationCode
       );
 
-      const multiFactorAssertion = PhoneMultiFactorGenerator.assertion(
-        phoneAuthCredential
-      );
+      const multiFactorAssertion =
+        PhoneMultiFactorGenerator.assertion(phoneAuthCredential);
 
-      await multiFactor(currentUser).enroll(multiFactorAssertion);
+      await multiFactor(currentUser).enroll(
+        multiFactorAssertion,
+        "Phone Number"
+      );
 
       alert("Multi-Factor Authentication enrolled successfully!");
       router.push("/");
@@ -210,10 +293,12 @@ export default function SignUpForm() {
       <button type="button" className="back-button" onClick={() => router.back()}>
         Back
       </button>
+
       <form ref={formRef} method="post" onSubmit={handleFormSubmission}>
         <h1>Sign up</h1>
 
         {errorMessage && <p className="error-message">{errorMessage}</p>}
+        {infoMessage && <p className="info-message">{infoMessage}</p>}
 
         {!showMfaEnrollment ? (
           <>
@@ -241,18 +326,18 @@ export default function SignUpForm() {
 
             <section>
               <label htmlFor="password">Password</label>
+
               <button
                 id="toggle-password"
                 type="button"
                 aria-label={
-                  showPassword
-                    ? "Hide password."
-                    : "Show password as plain text. Warning: this will display your password on the screen."
+                  showPassword ? "Hide password." : "Show password as plain text."
                 }
                 onClick={handleTogglePassword}
               >
                 {showPassword ? "Hide password" : "Show password"}
               </button>
+
               <input
                 id="password"
                 name="password"
@@ -263,11 +348,23 @@ export default function SignUpForm() {
                 aria-describedby="password-constraints"
                 required
               />
-              <div id="password-constraints">Eight or more characters.</div>
+
+              <div id="password-constraints">
+                Eight or more characters, including uppercase and lowercase
+                letters.
+              </div>
             </section>
 
             <button id="sign-up" type="submit" disabled={signupDisabled}>
-              Sign up
+              {signupDisabled ? "Signing up..." : "Sign up"}
+            </button>
+
+            <button type="button" onClick={checkEmailVerification}>
+              I verified my email
+            </button>
+
+            <button type="button" onClick={resendVerificationEmail}>
+              Resend verification email
             </button>
           </>
         ) : (
@@ -280,11 +377,12 @@ export default function SignUpForm() {
               id="phone-number"
               type="tel"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              placeholder="+15551234567"
+              onChange={(event) => setPhoneNumber(event.target.value)}
+              placeholder="+16711234567"
               required
               disabled={!!verificationId || isSendingCode}
             />
+
             <button
               type="button"
               onClick={sendMfaVerificationCode}
@@ -300,11 +398,12 @@ export default function SignUpForm() {
                   id="verification-code"
                   type="text"
                   value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value)}
+                  onChange={(event) => setVerificationCode(event.target.value)}
                   placeholder="123456"
                   required
                   disabled={isEnrollingMfa}
                 />
+
                 <button
                   type="button"
                   onClick={completeMfaEnrollment}
@@ -317,6 +416,7 @@ export default function SignUpForm() {
           </section>
         )}
       </form>
+
       <div id="recaptcha-container"></div>
     </main>
   );
